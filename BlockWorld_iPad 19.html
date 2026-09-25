@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BlockWorld 3D</title>
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#87ceeb;font-family:Arial,sans-serif;touch-action:none}
+#game{width:100%;height:100%;display:block}
+#crosshair{position:fixed;left:50%;top:50%;width:18px;height:18px;transform:translate(-50%,-50%);pointer-events:none}
+#crosshair:before,#crosshair:after{content:"";position:absolute;background:white;box-shadow:0 0 2px #000}
+#crosshair:before{width:18px;height:2px;top:8px}
+#crosshair:after{height:18px;width:2px;left:8px}
+#info{display:none}
+#hotbar{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);display:flex;gap:5px;z-index:12}
+#inventory{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);display:none;z-index:20;background:#202020ee;border:3px solid #aaa;border-radius:12px;padding:14px;color:#fff;width:min(92vw,520px);box-sizing:border-box}
+#inventory h2{margin:0 0 10px;text-align:center;font-size:20px}
+.invgrid{display:grid;grid-template-columns:repeat(5,1fr);gap:8px}.invtabs{display:flex;gap:6px;margin-bottom:10px}.invtabs button,.craftgrid button,#craftDo{padding:9px;border:2px solid #777;background:#333;color:#fff;border-radius:6px;font-weight:bold}.craftgrid{display:grid;grid-template-columns:repeat(3,58px);gap:5px;justify-content:center;margin:10px}.craftslot{width:58px;height:58px;background:#333;border:2px solid #777;display:flex;align-items:center;justify-content:center;font-size:11px}.recipe{padding:8px;margin:5px 0;background:#333;border-radius:6px;cursor:pointer}.invslot{min-height:70px;background:#333;border:2px solid #777;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px}.invslot .swatch{width:30px;height:30px;margin-bottom:4px}.invcount{font-weight:bold;font-size:14px}
+#invButton{position:fixed;top:65px;right:10px;z-index:13;padding:10px 12px;border:0;border-radius:8px;background:#fff;color:#111;font-weight:bold}
+@media(max-width:800px){#invButton{min-width:100px;min-height:44px}}
+.slot{width:48px;height:48px;background:#222b;border:2px solid #777;display:flex;align-items:center;justify-content:center;color:white;font-size:12px;border-radius:5px}
+.slot.active{border-color:white;box-shadow:0 0 0 2px #333}
+.swatch{width:30px;height:30px;border:1px solid #111}
+#msg{position:fixed;left:50%;top:62%;transform:translateX(-50%);color:white;background:#0008;padding:8px 14px;border-radius:8px;text-align:center;white-space:nowrap}\n#touch{display:none;position:fixed;inset:0;pointer-events:none}\n.pad{position:absolute;bottom:25px;left:20px;width:150px;height:150px;pointer-events:auto}\n.btn{position:absolute;width:52px;height:52px;border:0;border-radius:12px;background:#2229;color:#fff;font-size:22px;touch-action:none}.up{left:49px;top:0}.left{left:0;top:49px}.down{left:49px;top:98px}.right{left:98px;top:49px}\n#actions{position:absolute;right:115px;bottom:35px;display:flex;gap:10px;pointer-events:auto}.action{width:70px;height:70px;border:0;border-radius:14px;background:#2229;color:#fff;font-size:24px;font-weight:bold;touch-action:none}.action small{font-size:10px}#jump{position:absolute;right:25px;bottom:35px;width:76px;height:76px;border:0;border-radius:50%;background:#2229;color:#fff;font-size:18px;pointer-events:auto;touch-action:none}\n@media(max-width:800px){#info{font-size:12px;max-width:230px}#info{display:none}#hotbar{bottom:8px}.slot{width:38px;height:38px}.swatch{width:24px;height:24px}#touch{display:block}}
+#saveui{position:absolute;top:14px;left:14px;right:auto;z-index:10;display:flex;gap:6px;pointer-events:auto}#saveui button{font-size:14px;padding:10px 12px;border:0;border-radius:8px;background:#fff;color:#111}#saveStatus{position:absolute;top:68px;left:14px;right:auto;z-index:10;background:rgba(0,0,0,.65);color:#fff;padding:6px 9px;border-radius:7px;font-size:12px;display:none}@media(max-width:800px){#saveui button{min-width:72px;min-height:44px}}
+.invslot.picked{outline:3px solid #fff;transform:scale(1.03)}.slot.empty{opacity:.45}.invslot small{font-size:9px;display:block}.hotbar-help{font-size:12px;text-align:center;margin:6px 0;color:#ddd}</style>
+</head>
+<body>
+<canvas id="game"></canvas>
+<div id="crosshair"></div>
+
+<button id="invButton">🎒 INVENTAR</button><button id="lanButton" style="position:fixed;top:14px;right:14px;z-index:30;padding:10px 14px;border:2px solid #aaa;border-radius:8px;background:#202020dd;color:#fff;font-weight:bold">🌐 LAN</button>
+<div id="lanPanel" style="display:none;position:fixed;z-index:40;left:50%;top:50%;transform:translate(-50%,-50%);width:min(92vw,420px);background:#202020f5;color:#fff;border:3px solid #aaa;border-radius:12px;padding:16px;box-sizing:border-box;font-family:Arial,sans-serif">
+<h2 style="margin:0 0 10px">🌐 LAN / Multiplayer</h2>
+<p style="font-size:14px;line-height:1.4">Ganz einfach: Einer erstellt eine Welt und bekommt einen Code. Der andere gibt den Code ein.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button id="lanHost" style="padding:11px;flex:1">LAN erstellen</button><button id="lanJoin" style="padding:11px;flex:1">LAN beitreten</button></div>
+<div id="lanHostBox" style="display:none;margin-top:14px;text-align:center"><div>Dein Beitritts-Code:</div><div id="lanCode" style="font-size:32px;font-weight:bold;letter-spacing:6px;background:#333;border-radius:8px;padding:10px;margin:8px 0">------</div><button id="lanCopyCode" style="padding:10px">Code kopieren</button></div>
+<div id="lanJoinBox" style="display:none;margin-top:14px"><label for="lanCodeIn">Code des Hosts:</label><input id="lanCodeIn" inputmode="text" maxlength="6" style="display:block;width:100%;box-sizing:border-box;padding:12px;font-size:22px;text-align:center;letter-spacing:5px;text-transform:uppercase;margin:8px 0;border-radius:8px;border:0"><button id="lanConnect" style="width:100%;padding:11px">Verbinden</button></div>
+<div id="lanStatus" style="margin-top:12px;padding:8px;background:#333;border-radius:6px">Nicht verbunden</div>
+<button id="lanClose" style="padding:10px;margin-top:10px;width:100%">Schließen</button></div>
+<div id="inventory"><h2>Inventar</h2><div class="hotbar-help">Inventar-Block anklicken → Hotbar-Slot anklicken. Hotbar-Slot anklicken ohne Auswahl = aus Hotbar entfernen.</div><div class="invtabs"><button id="invTab">Inventar</button><button id="craftTab">Kraften</button><button id="recipeTab">Rezeptbuch</button></div><div id="invgrid" class="invgrid"></div><div id="crafting" style="display:none"><h3>Crafting</h3><div id="craftgrid" class="craftgrid"></div><div id="craftOutput"></div><button id="craftDo">HERSTELLEN</button></div><div id="recipes" style="display:none"></div><button id="closeInv" style="display:block;margin:12px auto 0;padding:10px 18px;border:0;border-radius:8px">Schließen</button></div><div id="hotbar"></div><div id="saveui"><button id="saveWorld">💾 EXPORT</button><button id="loadWorld">📂 IMPORT</button><input id="worldFile" type="file" accept=".json,application/json" style="display:none"></div><div id="saveStatus" aria-live="polite"></div>
+<div id="touch"><div class="actions"><button id="mine">M<br><small>ABBAU</small></button><button id="place">N<br><small>SETZEN</small></button></div><div class="pad"><button class="btn up" data-k="KeyW">▲</button><button class="btn left" data-k="KeyA">◀</button><button class="btn down" data-k="KeyS">▼</button><button class="btn right" data-k="KeyD">▶</button></div><button id="jump">SPRUNG</button></div>
+<script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+<script>
+const canvas=document.getElementById('game'), scene=new THREE.Scene();
+scene.background=new THREE.Color(0x87ceeb);
+scene.fog=new THREE.Fog(0x87ceeb,22,55);
+const camera=new THREE.PerspectiveCamera(75,innerWidth/innerHeight,.05,120);
+const renderer=new THREE.WebGLRenderer({canvas,antialias:true}); renderer.setSize(innerWidth,innerHeight); renderer.setPixelRatio(Math.min(devicePixelRatio,1.25));
+renderer.shadowMap.enabled=true;
+scene.add(new THREE.HemisphereLight(0xffffff,0x667788,0.75));
+scene.add(new THREE.AmbientLight(0xffffff,0.10));
+const sun=new THREE.DirectionalLight(0xffffff,0.65); sun.position.set(20,35,10); sun.castShadow=true; scene.add(sun);
+
+const mats={
+ grass:new THREE.MeshLambertMaterial({color:0x4f9f25}),
+ dirt:new THREE.MeshLambertMaterial({color:0x8a4d20}),
+ stone:new THREE.MeshLambertMaterial({color:0x707070}),
+ wood:new THREE.MeshLambertMaterial({color:0x9a5725}),
+ sand:new THREE.MeshLambertMaterial({color:0xe0bd65}),
+ glass:new THREE.MeshLambertMaterial({color:0x9edcff,transparent:true,opacity:.55}),
+ bricks:new THREE.MeshLambertMaterial({color:0xb83d2d}),
+ snow:new THREE.MeshLambertMaterial({color:0xf5f5f5}),
+ obsidian:new THREE.MeshLambertMaterial({color:0x1d1d38}),
+ gold:new THREE.MeshLambertMaterial({color:0xf0b900}),
+ crafting_table:new THREE.MeshLambertMaterial({color:0x9a4d20})
+};
+const names=['Gras','Erde','Stein','Holz','Sand','Glas','Bricks','Schnee','Obsidian','Gold','Crafting Table'];
+const keys=['grass','dirt','stone','wood','sand','glass','bricks','snow','obsidian','gold','crafting_table'];
+const colors=['#55aa3b','#8b5a2b','#888','#9b642f','#d9c27a','#bfe8ff','#a64b3b','#eeeeee','#252535','#e0b51a','#8b4a20'];
+let selected=0;
+const inventory=Object.fromEntries(keys.map(k=>[k,10]));
+let hotbarSlots=keys.slice(0,9);
+let inventoryPick=null;
+const blocks=new Map(), group=new THREE.Group(); scene.add(group);
+// LAN-Zustand muss bereits existieren, bevor die Startwelt erzeugt wird.
+const key=(x,y,z)=>x+','+y+','+z;
+const lan={peer:null,conn:null,role:null,applying:false,remote:null,code:''};
+function addBlock(x,y,z,type){
+ type=String(type);
+ if(!keys.includes(type)) type='grass';
+ if(!Number.isFinite(x)||!Number.isFinite(y)||!Number.isFinite(z)) return;
+ if(blocks.has(key(x,y,z))) return;
+ const m=new THREE.Mesh(new THREE.BoxGeometry(1,1,1),mats[type]);
+ m.position.set(x+.5,y+.5,z+.5); m.castShadow=true;m.receiveShadow=true;m.userData={x,y,z,type};
+ group.add(m);blocks.set(key(x,y,z),m);
+ if(!lan.applying && typeof lanSend==='function') lanSend({type:'blockAdd',x,y,z,block:type});
+}
+function removeBlock(x,y,z){const m=blocks.get(key(x,y,z));if(m){group.remove(m);m.geometry.dispose();blocks.delete(key(x,y,z)); if(!lan.applying && typeof lanSend==='function') lanSend({type:'blockRemove',x,y,z});}}
+function terrain(){
+ for(let x=-12;x<12;x++)for(let z=-12;z<12;z++){
+   const h=1+Math.max(0,Math.floor(2*Math.sin(x*.25)*Math.cos(z*.22)+1));
+   for(let y=0;y<=h;y++) addBlock(x,y,z,y===h?'grass':y>h-2?'dirt':'stone');
+ }
+ for(let x=-4;x<3;x++)for(let z=-3;z<4;z++)if(Math.random()<.45)addBlock(x,4,z,'stone');
+ // einfache Bäume
+ for(const [x,z] of [[7,5],[-8,-5],[11,-8]]){
+   for(let y=3;y<6;y++)addBlock(x,y,z,'wood');
+   for(let dx=-2;dx<=2;dx++)for(let dz=-2;dz<=2;dz++)for(let dy=0;dy<2;dy++)
+     if(Math.abs(dx)+Math.abs(dz)<4)addBlock(x+dx,6+dy,z+dz,'grass');
+ }
+}
+terrain();
+// Sicherheits-Boden: garantiert eine begehbare Startwelt, auch wenn eine alte/defekte Welt leer geladen wurde.
+function ensureGround(){
+  if(blocks.has(key(0,0,0))) return;
+  for(let x=-20;x<20;x++) for(let z=-20;z<20;z++) if(!blocks.has(key(x,0,z))) addBlock(x,0,z,'grass');
+  for(let x=-20;x<20;x++) for(let z=-20;z<20;z++) if(!blocks.has(key(x,-1,z))) addBlock(x,-1,z,'dirt');
+}
+ensureGround();
+
+function showSaveStatus(t){const e=document.getElementById('saveStatus');e.textContent=t;e.style.display='block';clearTimeout(window._saveMsg);window._saveMsg=setTimeout(()=>e.style.display='none',1800);}
+function getWorldData(){const data=[];for(const m of blocks.values()){const b=m.userData;data.push([b.x,b.y,b.z,b.type]);}return {version:3,blocks:data,inventory:{...inventory},selected,hotbarSlots:[...hotbarSlots],player:{x:player.pos.x,y:player.pos.y,z:player.pos.z,yaw:player.yaw,pitch:player.pitch}};}
+// Automatisches Speichern alle 20 Minuten (lokal im Browser)
+const AUTO_SAVE_MS=20*60*1000;
+let autoSaveTimer=null;
+function openAutoSaveDB(){return new Promise((resolve,reject)=>{try{const r=indexedDB.open('BlockWorldAutoSave',1);r.onupgradeneeded=()=>{if(!r.result.objectStoreNames.contains('world'))r.result.createObjectStore('world');};r.onsuccess=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('DB-Fehler'));}catch(e){reject(e);}})}
+async function autoSaveWorld(silent=false){try{const db=await openAutoSaveDB();const tx=db.transaction('world','readwrite');tx.objectStore('world').put(getWorldData(),'current');await new Promise((res,rej)=>{tx.oncomplete=res;tx.onerror=()=>rej(tx.error||new Error('Speichern fehlgeschlagen'));});db.close();if(!silent)showSaveStatus('Automatisch gespeichert ✓');}catch(e){if(!silent)showSaveStatus('Autospeichern nicht verfügbar');}}
+async function loadAutoSave(){try{const db=await openAutoSaveDB();const tx=db.transaction('world','readonly');const req=tx.objectStore('world').get('current');const data=await new Promise((res,rej)=>{req.onsuccess=()=>res(req.result);req.onerror=()=>rej(req.error);});db.close();if(data&&data.blocks)applyWorldData(data);}catch(e){}}
+function startAutoSave(){autoSaveWorld(true);clearInterval(autoSaveTimer);autoSaveTimer=setInterval(()=>autoSaveWorld(false),AUTO_SAVE_MS);}
+
+async function saveWorld(){
+  try{
+    const json=JSON.stringify(getWorldData(),null,2);
+    const blob=new Blob([json],{type:'application/json;charset=utf-8'});
+    const file=new File([blob],'BlockWorld_Welt.json',{type:'application/json'});
+
+    // iPad/Safari: Wenn das Teilen von Dateien unterstützt wird, direkt die
+    // Datei an das iPad-Teilen-Menü übergeben. Dort kann man „In Dateien
+    // sichern“ auswählen.
+    if(typeof navigator.share==='function'){
+      try{
+        const canShare=typeof navigator.canShare!=='function' || navigator.canShare({files:[file]});
+        if(canShare){
+          await navigator.share({files:[file],title:'BlockWorld_Welt.json',text:'BlockWorld Welt'});
+          showSaveStatus('Welt als Datei geteilt ✓');
+          return;
+        }
+      }catch(err){
+        if(err && err.name==='AbortError'){showSaveStatus('Export abgebrochen');return;}
+      }
+    }
+
+    // Fallback für HTML-Dateien auf iPad: den erzeugten JSON-Inhalt in einem
+    // neuen Tab öffnen. Von dort kann Safari über Teilen → „In Dateien
+    // sichern“ die Datei speichern. Zusätzlich versuchen wir den normalen
+    // Download-Link.
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement('a');
+    a.href=url;
+    a.download='BlockWorld_Welt.json';
+    a.target='_blank';
+    a.rel='noopener';
+    a.textContent='BlockWorld_Welt.json';
+    a.style.position='fixed';a.style.left='-9999px';
+    document.body.appendChild(a);
+    try{a.click();}catch(e){}
+    a.remove();
+
+    const opened=window.open(url,'_blank');
+    if(opened){
+      showSaveStatus('Datei geöffnet – über Teilen → „In Dateien sichern“ speichern');
+    }else{
+      showSaveStatus('Export: Datei-Link wurde erzeugt');
+    }
+    setTimeout(()=>URL.revokeObjectURL(url),60000);
+  }catch(e){
+    showSaveStatus('Export nicht möglich: '+(e && e.message ? e.message : 'Fehler'));
+  }
+}
+function applyWorldData(data){
+ for(const m of Array.from(blocks.values())){group.remove(m);m.geometry.dispose();}
+ blocks.clear();
+ for(const b of (data.blocks||[])){
+  if(!Array.isArray(b)||b.length<4) continue;
+  const x=Number(b[0]),y=Number(b[1]),z=Number(b[2]),type=String(b[3]);
+  if(Number.isFinite(x)&&Number.isFinite(y)&&Number.isFinite(z)&&keys.includes(type)&&y>=-64&&y<256) addBlock(x,y,z,type);
+ }
+ ensureGround();
+ if(data.inventory) keys.forEach(k=>inventory[k]=Math.max(0,Math.floor(Number(data.inventory[k])||0)));
+ hotbarSlots=Array.isArray(data.hotbarSlots)?data.hotbarSlots.slice(0,9).map(v=>keys.includes(v)?v:null):keys.slice(0,9);
+ if(Number.isInteger(data.selected)&&data.selected>=0&&data.selected<9) selected=data.selected;
+ updateBar();updateInventory();
+ if(data.player){
+  const px=Number(data.player.x),py=Number(data.player.y),pz=Number(data.player.z);
+  if(Number.isFinite(px)&&Number.isFinite(py)&&Number.isFinite(pz)){player.pos.set(px,py,pz);}
+  const yaw=Number(data.player.yaw),pitch=Number(data.player.pitch);
+  if(Number.isFinite(yaw)) player.yaw=yaw;
+  if(Number.isFinite(pitch)) player.pitch=Math.max(-1.5,Math.min(1.5,pitch));
+ }
+ player.onGround=false;showSaveStatus('Welt geladen ✓');
+}
+function loadWorld(){document.getElementById('worldFile').click();}
+document.getElementById('worldFile').addEventListener('change',async e=>{const f=e.target.files[0];if(!f)return;try{const data=JSON.parse(await f.text());if(!data||!Array.isArray(data.blocks))throw new Error('bad');applyWorldData(data);}catch(err){showSaveStatus('Ungültige Welt-Datei');}e.target.value='';});
+document.getElementById('saveWorld').addEventListener('click',saveWorld);document.getElementById('loadWorld').addEventListener('click',loadWorld);
+
+// Einfacher Multiplayer mit einem kurzen Code. PeerJS übernimmt die direkte Verbindung.
+const lanPanel=document.getElementById('lanPanel'), lanStatus=document.getElementById('lanStatus');
+const lanHostBox=document.getElementById('lanHostBox'),lanJoinBox=document.getElementById('lanJoinBox');
+const lanCodeEl=document.getElementById('lanCode'),lanCodeIn=document.getElementById('lanCodeIn');
+function lanMsg(s){lanStatus.textContent=s;}
+function lanSend(msg){if(lan.conn&&lan.conn.open)lan.conn.send(msg);}
+function lanHandle(msg){if(!msg)return; if(msg.type==='world'){lan.applying=true;applyWorldData(msg.data);lan.applying=false;return;} if(msg.type==='blockAdd'){if(!blocks.has(key(msg.x,msg.y,msg.z))){lan.applying=true;addBlock(msg.x,msg.y,msg.z,msg.block);lan.applying=false;}return;} if(msg.type==='blockRemove'){lan.applying=true;removeBlock(msg.x,msg.y,msg.z);lan.applying=false;return;} if(msg.type==='player'){if(lan.remote){lan.remote.pos.set(msg.x,msg.y,msg.z);lan.remote.yaw=msg.yaw||0;}}}
+function setupConnection(conn){lan.conn=conn;conn.on('open',()=>{lanMsg('Verbunden ✓');if(lan.role==='host')lanSend({type:'world',data:getWorldData()});});conn.on('data',lanHandle);conn.on('close',()=>lanMsg('Verbindung getrennt'));conn.on('error',()=>lanMsg('Verbindungsfehler'));}
+function randomCode(){return Math.floor(100000+Math.random()*900000).toString();}
+function resetLAN(){try{lan.conn?.close();lan.peer?.destroy();}catch{} lan.peer=null;lan.conn=null;lan.role=null;lan.code='';}
+async function hostLAN(){if(typeof Peer==='undefined'){lanMsg('LAN konnte nicht geladen werden. Internetverbindung prüfen.');return;}resetLAN();lan.role='host';lanHostBox.style.display='block';lanJoinBox.style.display='none';lanMsg('Erstelle LAN…');const code=randomCode();lan.code=code;lanCodeEl.textContent=code;const peerId='bw-'+code;lan.peer=new Peer(peerId);lan.peer.on('open',()=>lanMsg('Warte auf Mitspieler…'));lan.peer.on('connection',c=>{setupConnection(c);});lan.peer.on('error',e=>{lanMsg(e.type==='unavailable-id'?'Code bereits vergeben – bitte erneut erstellen.':'LAN-Fehler: '+e.type);});}
+function joinLAN(){resetLAN();lan.role='guest';lanHostBox.style.display='none';lanJoinBox.style.display='block';lanMsg('Code eingeben.');lanCodeIn.focus();}
+function connectLAN(){if(typeof Peer==='undefined'){lanMsg('LAN konnte nicht geladen werden. Internetverbindung prüfen.');return;}const code=lanCodeIn.value.replace(/\D/g,'').slice(0,6);if(code.length!==6){lanMsg('Bitte einen 6-stelligen Code eingeben.');return;}lan.code=code;lanMsg('Verbinde…');lan.peer=new Peer();lan.peer.on('open',()=>setupConnection(lan.peer.connect('bw-'+code,{reliable:true})));lan.peer.on('error',e=>lanMsg('Verbindung fehlgeschlagen.'));}
+document.getElementById('lanButton').onclick=()=>{lanPanel.style.display='block';lanMsg('Nicht verbunden');};
+document.getElementById('lanClose').onclick=()=>{lanPanel.style.display='none';};
+document.getElementById('lanHost').onclick=hostLAN;
+document.getElementById('lanJoin').onclick=joinLAN;
+document.getElementById('lanConnect').onclick=connectLAN;
+document.getElementById('lanCopyCode').onclick=async()=>{try{await navigator.clipboard.writeText(lan.code);lanMsg('Code kopiert ✓');}catch{lanMsg('Code: '+lan.code);}};
+lan.remote={pos:new THREE.Vector3(0,5,0),yaw:0};
+const remoteMesh=new THREE.Mesh(new THREE.BoxGeometry(.7,1.8,.7),new THREE.MeshLambertMaterial({color:0x3366ff}));remoteMesh.visible=false;scene.add(remoteMesh);
+setInterval(()=>{remoteMesh.position.copy(lan.remote.pos);remoteMesh.visible=!!(lan.conn&&lan.conn.open);lanSend({type:'player',x:player?.pos?.x||0,y:player?.pos?.y||5,z:player?.pos?.z||0,yaw:player?.yaw||0});},100);
+
+const player={pos:new THREE.Vector3(0,5,0),vel:new THREE.Vector3(),yaw:0,pitch:0,onGround:false};
+camera.position.copy(player.pos);
+const keysDown={};
+function mineBlock(){const hit=targetBlock();if(hit){const b=hit.object.userData;if(b.y>0){removeBlock(b.x,b.y,b.z);inventory[b.type]=(inventory[b.type]||0)+1;updateBar();updateInventory();}}}
+function placeBlock(){const hit=targetBlock();if(hit){const b=hit.object.userData;const n=hit.face.normal.clone();const p=new THREE.Vector3(b.x+.5,b.y+.5,b.z+.5).add(n);const x=Math.floor(p.x),y=Math.floor(p.y),z=Math.floor(p.z);const type=hotbarSlots[selected];if(type&&y>=0&&y<256&&!blocks.has(key(x,y,z))&&(inventory[type]||0)>0){addBlock(x,y,z,type);inventory[type]--;updateBar();updateInventory();}}}
+addEventListener('keydown',e=>{const k=(e.key||'').toLowerCase();keysDown[e.code]=true;if(e.code==='Space')e.preventDefault();if(/^Digit[1-9]$/.test(e.code)){selected=+e.code.slice(5)-1;updateBar();updateInventory();}if(k==='m'||e.code==='KeyM')mineBlock();if(k==='n'||e.code==='KeyN')placeBlock();});
+addEventListener('keyup',e=>keysDown[e.code]=false);
+canvas.addEventListener('click',()=>{ if(typeof canvas.requestPointerLock==='function'){ canvas.requestPointerLock(); } });
+addEventListener('mousemove',e=>{if(document.pointerLockElement!==canvas)return;player.yaw-=e.movementX*.002;player.pitch-=e.movementY*.002;player.pitch=Math.max(-1.5,Math.min(1.5,player.pitch));});
+addEventListener('contextmenu',e=>e.preventDefault());
+
+
+// Touch-Steuerung fürs iPad
+document.querySelectorAll('.btn').forEach(btn=>{
+  const k=btn.dataset.k;
+  const on=e=>{e.preventDefault();keysDown[k]=true};
+  const off=e=>{e.preventDefault();keysDown[k]=false};
+  btn.addEventListener('touchstart',on,{passive:false});
+  btn.addEventListener('touchend',off,{passive:false});
+  btn.addEventListener('touchcancel',off,{passive:false});
+});
+document.getElementById('mine').addEventListener('touchstart',e=>{e.preventDefault();mineBlock()},{passive:false});
+document.getElementById('place').addEventListener('touchstart',e=>{e.preventDefault();placeBlock()},{passive:false});
+document.getElementById('jump').addEventListener('touchstart',e=>{e.preventDefault();keysDown.Space=true},{passive:false});
+document.getElementById('jump').addEventListener('touchend',e=>{e.preventDefault();keysDown.Space=false},{passive:false});
+
+let touchLook=null;
+canvas.addEventListener('touchstart',e=>{
+  if(e.touches.length===1){
+    const t=e.touches[0];
+    if(t.clientX>innerWidth*.35){touchLook={x:t.clientX,y:t.clientY}}
+  }
+},{passive:false});
+canvas.addEventListener('touchmove',e=>{
+  if(!touchLook)return;
+  const t=e.touches[0], dx=t.clientX-touchLook.x, dy=t.clientY-touchLook.y;
+  player.yaw-=dx*.006; player.pitch-=dy*.006;
+  player.pitch=Math.max(-1.5,Math.min(1.5,player.pitch));
+  touchLook={x:t.clientX,y:t.clientY};
+  e.preventDefault();
+},{passive:false});
+canvas.addEventListener('touchend',()=>touchLook=null,{passive:true});
+
+const ray=new THREE.Raycaster();
+function targetBlock(){ray.setFromCamera({x:0,y:0},camera);const hits=ray.intersectObjects(group.children);return hits.length&&hits[0].distance<7?hits[0]:null}
+addEventListener('mousedown',e=>{
+ if(document.pointerLockElement!==canvas)return;
+ const hit=targetBlock();if(!hit)return;
+ const b=hit.object.userData;
+ if(e.button===0){ if(b.y>0)removeBlock(b.x,b.y,b.z); }
+ if(e.button===2){placeBlock();}
+});
+
+const hot=document.getElementById('hotbar');
+function updateBar(){
+ hot.innerHTML=hotbarSlots.map((type,i)=>{const idx=type?keys.indexOf(type):-1;const n=idx>=0?names[idx]:'Leer';const c=idx>=0?colors[idx]:'transparent';return `<button class="slot ${i===selected?'active':''} ${type?'':'empty'}" data-slot="${i}" title="${n}"><div class="swatch" style="background:${c}"></div><span>${type?(inventory[type]||0):''}</span></button>`;}).join('');
+ hot.querySelectorAll('[data-slot]').forEach(el=>el.addEventListener('click',()=>{
+   const i=Number(el.dataset.slot);
+   if(inventoryPick){hotbarSlots[i]=inventoryPick;inventoryPick=null;updateBar();updateInventory();return;}
+   selected=i;updateBar();updateInventory();
+ }));
+}
+function updateInventory(){
+ const el=document.getElementById('invgrid');
+ el.innerHTML=names.map((n,i)=>{const type=keys[i];const inHot=hotbarSlots.includes(type);return `<button class="invslot ${inventoryPick===type?'picked':''}" data-invtype="${type}"><div class="swatch" style="background:${colors[i]}"></div><div>${n}</div><div class="invcount">${inventory[type]||0}</div><small>${inHot?'In Hotbar':''}</small></button>`;}).join('');
+ el.querySelectorAll('[data-invtype]').forEach(el=>el.addEventListener('click',()=>{inventoryPick=el.dataset.invtype;updateInventory();}));
+}
+updateInventory();
+
+const recipes=[
+ {name:'Holzplanken',in:{wood:1},out:'dirt',count:4},
+ {name:'Glas',in:{sand:1},out:'glass',count:1},
+ {name:'Bricks',in:{stone:2},out:'bricks',count:1},
+ {name:'Crafting Table',in:{wood:4},out:'crafting_table',count:1},
+ {name:'Gold Block',in:{gold:9},out:'gold',count:1}
+];
+let craftSlots=Array(9).fill(null), selectedRecipe=null;
+function blockLabel(k){return names[keys.indexOf(k)]||k;}
+function renderCraftGrid(){const el=document.getElementById('craftgrid');el.innerHTML=craftSlots.map((v,i)=>`<button class="craftslot" data-craftslot="${i}">${v?blockLabel(v):''}</button>`).join('');}
+function renderRecipes(){const el=document.getElementById('recipes');el.innerHTML='<h3>Rezeptbuch</h3>'+recipes.map((r,i)=>`<div class="recipe" data-recipe="${i}"><b>${r.name}</b><br>${Object.entries(r.in).map(([k,v])=>v+'× '+blockLabel(k)).join(' + ')} → ${r.count}× ${blockLabel(r.out)}</div>`).join('');}
+function canCraft(r){return Object.entries(r.in).every(([k,v])=>(inventory[k]||0)>=v);}
+function craftRecipe(r){if(!canCraft(r))return showSaveStatus('Nicht genug Materialien');Object.entries(r.in).forEach(([k,v])=>inventory[k]-=v);inventory[r.out]=(inventory[r.out]||0)+r.count;updateBar();updateInventory();showSaveStatus(r.name+' hergestellt ✓');}
+function openCrafting(){
+ document.getElementById('invgrid').style.display='none';
+ document.getElementById('recipes').style.display='none';
+ document.getElementById('crafting').style.display='block';
+ if(selectedRecipe===null) selectedRecipe=0;
+ const r=recipes[selectedRecipe];
+ craftSlots=Array(9).fill(null);
+ if(r){let i=0;for(const [k,v] of Object.entries(r.in)){for(let n=0;n<v&&i<9;n++)craftSlots[i++]=k;}}
+ document.getElementById('craftOutput').textContent=r?'Ergebnis: '+r.count+'× '+blockLabel(r.out):'';
+ renderCraftGrid();
+}
+function openInventoryTab(){document.getElementById('invgrid').style.display='grid';document.getElementById('crafting').style.display='none';document.getElementById('recipes').style.display='none';}
+function openRecipeTab(){document.getElementById('invgrid').style.display='none';document.getElementById('crafting').style.display='none';document.getElementById('recipes').style.display='block';renderRecipes();}
+renderCraftGrid();
+renderRecipes();
+document.getElementById('invButton').addEventListener('click',()=>document.getElementById('inventory').style.display='block');document.getElementById('invTab').addEventListener('click',openInventoryTab);document.getElementById('craftTab').addEventListener('click',openCrafting);document.getElementById('recipeTab').addEventListener('click',openRecipeTab);document.getElementById('craftDo').addEventListener('click',()=>{if(selectedRecipe===null)selectedRecipe=0;craftRecipe(recipes[selectedRecipe]);});document.getElementById('recipes').addEventListener('click',e=>{const r=e.target.closest('[data-recipe]');if(r){selectedRecipe=Number(r.dataset.recipe);openCrafting();}});document.getElementById('closeInv').addEventListener('click',()=>document.getElementById('inventory').style.display='none');
+updateBar();
+
+function collisionAt(pos){
+ const r=.3,h=1.75;
+ const minX=Math.floor(pos.x-r),maxX=Math.floor(pos.x+r);
+ const minY=Math.floor(pos.y),maxY=Math.floor(pos.y+h);
+ const minZ=Math.floor(pos.z-r),maxZ=Math.floor(pos.z+r);
+ for(let x=minX;x<=maxX;x++) for(let y=minY;y<=maxY;y++) for(let z=minZ;z<=maxZ;z++) if(blocks.has(key(x,y,z))) return true;
+ return false;
+}
+function resolveVerticalCollision(oldY,newY){
+ const r=.3,h=1.75;
+ const minX=Math.floor(player.pos.x-r),maxX=Math.floor(player.pos.x+r);
+ const minZ=Math.floor(player.pos.z-r),maxZ=Math.floor(player.pos.z+r);
+ if(newY<oldY){
+  let top=-Infinity;
+  const feetOld=oldY,feetNew=newY;
+  for(let x=minX;x<=maxX;x++) for(let z=minZ;z<=maxZ;z++) for(let y=Math.floor(feetNew);y<=Math.floor(feetOld);y++){
+   if(blocks.has(key(x,y,z)) && feetOld>=y+1 && feetNew<y+1) top=Math.max(top,y+1);
+  }
+  if(top>-Infinity){player.pos.y=top+0.001;player.onGround=true;player.vel.y=0;return true;}
+ }else if(newY>oldY){
+  const headOld=oldY+h,headNew=newY+h;
+  for(let x=minX;x<=maxX;x++) for(let z=minZ;z<=maxZ;z++) for(let y=Math.floor(headOld);y<=Math.floor(headNew);y++){
+   if(blocks.has(key(x,y,z)) && headOld<=y && headNew>y){player.pos.y=y-h-0.001;player.vel.y=0;return true;}
+  }
+ }
+ return false;
+}
+let last=performance.now();
+function animate(now){
+ const dt=Math.min((now-last)/1000,.05);last=now;
+ const speed=5, dir=new THREE.Vector3();
+ if(keysDown.KeyW)dir.z+=1;if(keysDown.KeyS)dir.z-=1;if(keysDown.KeyA)dir.x-=1;if(keysDown.KeyD)dir.x+=1;
+ if(dir.length())dir.normalize();
+ const forward=new THREE.Vector3(-Math.sin(player.yaw),0,-Math.cos(player.yaw));
+ const right=new THREE.Vector3(Math.cos(player.yaw),0,-Math.sin(player.yaw));
+ const move=forward.multiplyScalar(dir.z).add(right.multiplyScalar(dir.x));
+ player.vel.x=move.x*speed;player.vel.z=move.z*speed;
+ if(keysDown.Space&&player.onGround){player.vel.y=7;player.onGround=false;}
+ player.vel.y-=18*dt;
+ let np=player.pos.clone();np.x+=player.vel.x*dt;if(!collisionAt(np))player.pos.x=np.x;
+ np=player.pos.clone();np.z+=player.vel.z*dt;if(!collisionAt(np))player.pos.z=np.z;
+ const oldY=player.pos.y;
+ np=player.pos.clone();np.y+=player.vel.y*dt;
+ if(!resolveVerticalCollision(oldY,np.y)){player.pos.y=np.y;player.onGround=false;}
+ if(player.pos.y<-10)player.pos.set(0,7,0);
+ camera.position.set(player.pos.x,player.pos.y+1.6,player.pos.z);
+ camera.rotation.set(player.pitch,player.yaw,0,'YXZ');
+ renderer.render(scene,camera);requestAnimationFrame(animate);
+}
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight)});
+// Sicherheits-Fallback: Falls die Welt durch einen leeren Spielstand/LAN-Zustand geleert wurde, wird die Startwelt wieder erzeugt.
+ensureGround();
+if(!blocks.has(key(0,0,0))){ for(let x=-20;x<20;x++) for(let z=-20;z<20;z++) if(!blocks.has(key(x,0,z))) addBlock(x,0,z,'grass'); }
+if(player.pos.y<2) player.pos.set(0,5,0);
+startAutoSave();
+requestAnimationFrame(animate);
+</script>
+</body>
+</html>
